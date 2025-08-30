@@ -58,6 +58,8 @@ sys_sleep(void)
   int n;
   uint ticks0;
 
+  backtrace();
+
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
@@ -70,8 +72,6 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);
   }
   release(&tickslock);
-  //添加backtrace的调用
-  backtrace();
   return 0;
 }
 
@@ -98,32 +98,27 @@ sys_uptime(void)
   return xticks;
 }
 
-uint64 
-sys_sigreturn(void){
-  struct proc* p=myproc();
-  //恢复现场
-  memmove(p->trapframe,&(p->resume),sizeof(struct trapframe));
-  //清零计时器
-  p->curticks=0;
-  return 0;
+uint64
+sys_sigreturn(void)
+{
+  struct proc* proc = myproc();
+  // re-store trapframe so that it can return to the interrupt code before.
+  *proc->trapframe = proc->saved_trapframe;
+  proc->have_return = 1; // true
+  return proc->trapframe->a0;
 }
 
-uint64 
-sys_sigalarm(void){
-  //保存ticks和handler到proc结构中
+uint64
+sys_sigalarm(void)
+{
   int ticks;
-  if(argint(0, &ticks) < 0){
-    return -1;
-  }
-  uint64 handler;
-  if(argaddr(1,&handler)<0){
-    return -1;
-  }
-  struct proc* p = myproc();
-  p->ticks=ticks;
-  p->handler=handler;
-  // 重置过去的时钟数
-  p->curticks = 0;
+  uint64 handler_va;
 
+  argint(0, &ticks);
+  argaddr(1, &handler_va);
+  struct proc* proc = myproc();
+  proc->alarm_interval = ticks;
+  proc->handler_va = handler_va;
+  proc->have_return = 1; // true
   return 0;
 }

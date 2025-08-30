@@ -76,23 +76,29 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  // 产生了计时器中断
-  if(which_dev == 2){
-    //具有时钟中断处理函数
-    if(p->ticks!=0){
-      ++p->curticks;
-      if(p->curticks==p->ticks){
-        // p->trapframe->epc=p->handler;
-        // p->curticks=0;
-        //保存现场
-        memmove(&(p->resume), p->trapframe, sizeof(struct trapframe));
-        p->trapframe->epc = p->handler;
+  // give up the CPU if this is a timer interrupt.
+  if(which_dev == 2) {
+    struct proc *proc = myproc();
+    // Check if proc->alarm_interval is not zero
+    // and if the alarm handler has returned.
+    if (proc->alarm_interval && proc->have_return) {
+      // Check if the specified number of ticks have passed.
+      if (++proc->passed_ticks == 2) {
+        // Save the current trapframe of the process.
+        proc->saved_trapframe = *p->trapframe;
+        
+        // Modify the epc in the trapframe to jump to the handler function.
+        proc->trapframe->epc = proc->handler_va;
+        
+        // Reset the passed_ticks counter.
+        proc->passed_ticks = 0;
+        
+        // Prevent re-entrant calls to the handler.
+        proc->have_return = 0;
       }
     }
-  }
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
     yield();
+  }
 
   usertrapret();
 }
